@@ -350,4 +350,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     return text;
   }
+
+  private async handleUserMessage(userMessage: string) {
+  // Auto-include current file context
+  const currentFile = await FileService.getCurrentFile();
+  let fullPrompt = userMessage;
+  
+  if (currentFile) {
+    fullPrompt = `Current file content:\n\`\`\`\n${currentFile}\n\`\`\`\n\nUser: ${userMessage}`;
+  }
+
+  // Send to Ollama...
+}
+
 }
