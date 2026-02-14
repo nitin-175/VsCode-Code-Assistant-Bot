@@ -1,118 +1,130 @@
-import * as vscode from 'vscode';
-import { OllamaService } from '../services/OllamaService';
+import * as vscode from "vscode";
+import { OllamaService } from "../services/OllamaService";
+import { FileService } from "../services/FileService";
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
+	role: "user" | "assistant";
+	content: string;
 }
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'ollama-assistant.chatView';
-  private _view?: vscode.WebviewView;
-  private chatHistory: ChatMessage[] = [];
+	public static readonly viewType = "ollama-assistant.chatView";
+	private _view?: vscode.WebviewView;
+	private chatHistory: ChatMessage[] = [];
 
-  constructor(
-    private readonly extensionUri: vscode.Uri,
-    private readonly ollamaService: OllamaService
-  ) {}
+	constructor(
+		private readonly extensionUri: vscode.Uri,
+		private readonly ollamaService: OllamaService,
+	) {}
 
-  public resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
-  ) {
-    this._view = webviewView;
+	public resolveWebviewView(
+		webviewView: vscode.WebviewView,
+		context: vscode.WebviewViewResolveContext,
+		_token: vscode.CancellationToken,
+	) {
+		this._view = webviewView;
 
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this.extensionUri],
-    };
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [this.extensionUri],
+		};
 
-    webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
+		webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
 
-    // Handle messages from webview
-    webviewView.webview.onDidReceiveMessage(async (data) => {
-      switch (data.type) {
-        case 'sendMessage':
-          await this.handleUserMessage(data.message);
-          break;
-        case 'clearChat':
-          this.chatHistory = [];
-          this.sendMessage({ type: 'clearChat' });
-          break;
-      }
-    });
-  }
+		// Handle messages from webview
+		webviewView.webview.onDidReceiveMessage(async (data) => {
+			switch (data.type) {
+				case "sendMessage":
+					await this.handleUserMessage(data.message);
+					break;
+				case "clearChat":
+					this.chatHistory = [];
+					this.sendMessage({ type: "clearChat" });
+					break;
+			}
+		});
+	}
 
-  private async handleUserMessage(userMessage: string) {
-    if (!userMessage.trim()) {
-      return;
-    }
+	private async handleUserMessage(userMessage: string) {
+		const currentFile = await FileService.getCurrentFile();
+		let fullPrompt = userMessage;
 
-    // Add user message to history
-    this.chatHistory.push({ role: 'user', content: userMessage });
+		if (currentFile) {
+			fullPrompt = `Current file content:\n\`\`\`\n${currentFile}\n\`\`\`\n\nUser: ${userMessage}`;
+		}
+		if (!userMessage.trim()) {
+			return;
+		}
 
-    // Send user message to webview
-    this.sendMessage({
-      type: 'userMessage',
-      message: userMessage,
-    });
+		// Add user message to history
+		this.chatHistory.push({ role: "user", content: userMessage });
 
-    // Get model from config
-    const config = vscode.workspace.getConfiguration('ollamaAssistant');
-    const model = config.get<string>('model', 'llama3');
+		// Send user message to webview
+		this.sendMessage({
+			type: "userMessage",
+			message: userMessage,
+		});
 
-    try {
-      // Prepare messages for API
-      const messages = [
-        {
-          role: 'system' as const,
-          content: 'You are a helpful coding assistant. Provide clear, concise answers.',
-        },
-        ...this.chatHistory.map((msg) => ({
-          role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
-          content: msg.content,
-        })),
-      ];
+		// Get model from config
+		const config = vscode.workspace.getConfiguration("ollamaAssistant");
+		const model = config.get<string>("model", "llama3");
 
-      // Stream response
-      let assistantMessage = '';
+		try {
+			// Prepare messages for API
+			const messages = [
+				{
+					role: "system" as const,
+					content:
+						"You are a helpful coding assistant. Provide clear, concise answers.",
+				},
+				...this.chatHistory.map((msg) => ({
+					role:
+						msg.role === "user" ? ("user" as const) : ("assistant" as const),
+					content: msg.content,
+				})),
+			];
 
-      for await (const chunk of this.ollamaService.streamChat(model, messages)) {
-        assistantMessage += chunk;
-        this.sendMessage({
-          type: 'assistantChunk',
-          message: assistantMessage,
-        });
-      }
+			// Stream response
+			let assistantMessage = "";
 
-      // Save complete response to history
-      this.chatHistory.push({ role: 'assistant', content: assistantMessage });
+			for await (const chunk of this.ollamaService.streamChat(
+				model,
+				messages,
+			)) {
+				assistantMessage += chunk;
+				this.sendMessage({
+					type: "assistantChunk",
+					message: assistantMessage,
+				});
+			}
 
-      // Mark as complete
-      this.sendMessage({
-        type: 'assistantComplete',
-        message: assistantMessage,
-      });
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      this.sendMessage({
-        type: 'error',
-        message: `Error: ${errorMsg}`,
-      });
-    }
-  }
+			// Save complete response to history
+			this.chatHistory.push({ role: "assistant", content: assistantMessage });
 
-  private sendMessage(message: any) {
-    if (this._view) {
-      this._view.webview.postMessage(message);
-    }
-  }
+			// Mark as complete
+			this.sendMessage({
+				type: "assistantComplete",
+				message: assistantMessage,
+			});
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : "Unknown error";
+			this.sendMessage({
+				type: "error",
+				message: `Error: ${errorMsg}`,
+			});
+		}
+	}
 
-  private getHtmlForWebview(webview: vscode.Webview): string {
-    const nonce = this.getNonce();
+	private sendMessage(message: any) {
+		if (this._view) {
+			this._view.webview.postMessage(message);
+		}
+	}
 
-    return `
+	private getHtmlForWebview(webview: vscode.Webview): string {
+		const nonce = this.getNonce();
+
+		return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -340,27 +352,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </body>
       </html>
     `;
-  }
+	}
 
-  private getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-      text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-  }
-
-  private async handleUserMessage(userMessage: string) {
-  // Auto-include current file context
-  const currentFile = await FileService.getCurrentFile();
-  let fullPrompt = userMessage;
-  
-  if (currentFile) {
-    fullPrompt = `Current file content:\n\`\`\`\n${currentFile}\n\`\`\`\n\nUser: ${userMessage}`;
-  }
-
-  // Send to Ollama...
-}
-
+	private getNonce(): string {
+		let text = "";
+		const possible =
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+		for (let i = 0; i < 32; i++) {
+			text += possible.charAt(Math.floor(Math.random() * possible.length));
+		}
+		return text;
+	}
 }
