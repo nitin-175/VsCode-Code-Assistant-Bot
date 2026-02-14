@@ -38,3 +38,4 @@ export class FileService {
     vscode.window.showInformationMessage('✅ File updated by Ollama!');
   }
 }
+  
