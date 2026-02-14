@@ -1,0 +1,102 @@
+{
+  "name": "ollama-code-assistant",
+  "displayName": "Ollama Code Assistant",
+  "description": "AI code assistant using local Ollama models",
+  "version": "1.0.0",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Machine Learning"],
+  "keywords": ["ai", "ollama", "code-assistant", "llm"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ollama-assistant.explainCode",
+        "title": "Ollama: Explain Selected Code"
+      },
+      {
+        "command": "ollama-assistant.showOutput",
+        "title": "Ollama: Show Output Panel"
+      },
+      {
+        "command": "ollama-assistant.openChat",
+        "title": "Ollama: Open Chat"
+      },
+      {
+        "command": "ollama-assistant.editFile",
+        "title": "Ollama: Edit Current File" 
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ollama-assistant",
+          "title": "Ollama Assistant",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ollama-assistant": [
+        {
+          "type": "webview",
+          "id": "ollama-assistant.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "ollama-assistant.explainCode",
+          "when": "editorHasSelection",
+          "group": "ollama"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ollama Code Assistant",
+      "properties": {
+        "ollamaAssistant.model": {
+          "type": "string",
+          "default": "qwen2.5:3b",
+          "description": "Ollama model to use",
+          "enum": ["qwen2.5:3b,llama3", "mistral", "codellama"]
+        },
+        "ollamaAssistant.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama API base URL"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "ollama": "^0.5.0"
+  }
+
+  
+}
