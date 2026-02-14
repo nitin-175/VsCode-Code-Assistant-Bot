@@ -34,7 +34,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode5 = __toESM(require("vscode"));
+var vscode6 = __toESM(require("vscode"));
 
 // src/services/OllamaService.ts
 var vscode = __toESM(require("vscode"));
@@ -390,7 +390,59 @@ var OutputPanelProvider = class _OutputPanelProvider {
 };
 
 // src/providers/ChatViewProvider.ts
+var vscode4 = __toESM(require("vscode"));
+
+// src/services/FileService.ts
 var vscode3 = __toESM(require("vscode"));
+var FileService = class {
+  // Get workspace files
+  static async getWorkspaceFiles() {
+    try {
+      const files = [];
+      const uris = await vscode3.workspace.findFiles(
+        "**/*.{js,ts,jsx,tsx,py,html,css}",
+        "**/node_modules/**,**/dist/**,.git/**"
+      );
+      for (const uri of uris.slice(0, 10)) {
+        try {
+          const content = await vscode3.workspace.fs.readFile(uri);
+          const text = new TextDecoder().decode(content);
+          const fileName = uri.path.split("/").pop() || "unknown";
+          files.push(`--- File: ${fileName} ---
+${text.slice(0, 2e3)}`);
+        } catch (e) {
+        }
+      }
+      return files;
+    } catch (error) {
+      return [];
+    }
+  }
+  // Get current file content
+  static async getCurrentFile() {
+    const editor = vscode3.window.activeTextEditor;
+    return editor?.document.getText() || null;
+  }
+  // Replace file content
+  static async replaceFileContent(content) {
+    const editor = vscode3.window.activeTextEditor;
+    if (!editor)
+      return;
+    const fullRange = new vscode3.Range(
+      0,
+      0,
+      editor.document.lineCount,
+      editor.document.lineAt(editor.document.lineCount - 1).text.length
+    );
+    await editor.edit((edit) => {
+      edit.replace(fullRange, content);
+    });
+    await editor.document.save();
+    vscode3.window.showInformationMessage("\u2705 File saved by Ollama!");
+  }
+};
+
+// src/providers/ChatViewProvider.ts
 var ChatViewProvider = class {
   constructor(extensionUri, ollamaService) {
     this.extensionUri = extensionUri;
@@ -419,6 +471,16 @@ var ChatViewProvider = class {
     });
   }
   async handleUserMessage(userMessage) {
+    const currentFile = await FileService.getCurrentFile();
+    let fullPrompt = userMessage;
+    if (currentFile) {
+      fullPrompt = `Current file content:
+\`\`\`
+${currentFile}
+\`\`\`
+
+User: ${userMessage}`;
+    }
     if (!userMessage.trim()) {
       return;
     }
@@ -427,7 +489,7 @@ var ChatViewProvider = class {
       type: "userMessage",
       message: userMessage
     });
-    const config = vscode3.workspace.getConfiguration("ollamaAssistant");
+    const config = vscode4.workspace.getConfiguration("ollamaAssistant");
     const model = config.get("model", "llama3");
     try {
       const messages = [
@@ -441,7 +503,10 @@ var ChatViewProvider = class {
         }))
       ];
       let assistantMessage = "";
-      for await (const chunk of this.ollamaService.streamChat(model, messages)) {
+      for await (const chunk of this.ollamaService.streamChat(
+        model,
+        messages
+      )) {
         assistantMessage += chunk;
         this.sendMessage({
           type: "assistantChunk",
@@ -708,9 +773,9 @@ var ChatViewProvider = class {
 };
 
 // src/utils/editor.ts
-var vscode4 = __toESM(require("vscode"));
+var vscode5 = __toESM(require("vscode"));
 function getSelectedCode() {
-  const editor = vscode4.window.activeTextEditor;
+  const editor = vscode5.window.activeTextEditor;
   if (!editor) {
     return null;
   }
@@ -732,7 +797,7 @@ function activate(context) {
   const outputPanelProvider = new OutputPanelProvider(context.extensionUri);
   const chatViewProvider = new ChatViewProvider(context.extensionUri, ollamaService);
   context.subscriptions.push(
-    vscode5.window.registerWebviewViewProvider(
+    vscode6.window.registerWebviewViewProvider(
       "ollama-assistant.chatView",
       chatViewProvider,
       {
@@ -743,14 +808,14 @@ function activate(context) {
     )
   );
   context.subscriptions.push(
-    vscode5.commands.registerCommand("ollama-assistant.explainCode", async () => {
+    vscode6.commands.registerCommand("ollama-assistant.explainCode", async () => {
       const selection = getSelectedCode();
       if (!selection) {
-        vscode5.window.showWarningMessage("Please select some code first!");
+        vscode6.window.showWarningMessage("Please select some code first!");
         return;
       }
       const { code, language } = selection;
-      const config = vscode5.workspace.getConfiguration("ollamaAssistant");
+      const config = vscode6.workspace.getConfiguration("ollamaAssistant");
       const model = config.get("model", "llama3");
       const panel = outputPanelProvider.createPanel("Code Explanation");
       panel.webview.html = outputPanelProvider.getLoadingHtml();
@@ -779,32 +844,131 @@ Provide:
           fullResponse,
           true
         );
-        vscode5.window.showInformationMessage("Explanation complete!");
+        vscode6.window.showInformationMessage("\u2705 Explanation complete!");
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        vscode5.window.showErrorMessage(`Ollama error: ${errorMsg}`);
+        vscode6.window.showErrorMessage(`Ollama error: ${errorMsg}`);
         panel.webview.html = outputPanelProvider.getErrorHtml(errorMsg);
       }
     })
   );
   context.subscriptions.push(
-    vscode5.commands.registerCommand("ollama-assistant.showOutput", () => {
+    vscode6.commands.registerCommand("ollama-assistant.showOutput", () => {
       outputPanelProvider.createPanel("Ollama Output");
     })
   );
   context.subscriptions.push(
-    vscode5.commands.registerCommand("ollama-assistant.openChat", () => {
-      vscode5.commands.executeCommand("ollama-assistant.chatView.focus");
+    vscode6.commands.registerCommand("ollama-assistant.openChat", () => {
+      vscode6.commands.executeCommand("ollama-assistant.chatView.focus");
+    })
+  );
+  context.subscriptions.push(
+    vscode6.commands.registerCommand("ollama-assistant.editFile", async () => {
+      const currentFile = await FileService.getCurrentFile();
+      if (!currentFile) {
+        vscode6.window.showWarningMessage("\u274C No active file open!");
+        return;
+      }
+      const config = vscode6.workspace.getConfiguration("ollamaAssistant");
+      const model = config.get("model", "llama3");
+      const panel = outputPanelProvider.createPanel("AI File Edit");
+      panel.webview.html = outputPanelProvider.getLoadingHtml();
+      try {
+        const language = vscode6.window.activeTextEditor?.document.languageId || "javascript";
+        const prompt = `You are an expert ${language} developer. 
+IMPROVE this entire file. Make it cleaner, more efficient, add comments, fix bugs.
+ONLY return the COMPLETE improved code (NO explanations, NO markdown):
+
+\`\`\`${language}
+${currentFile}
+\`\`\``;
+        let improvedCode = "";
+        for await (const chunk of ollamaService.streamGenerate(model, prompt)) {
+          improvedCode += chunk;
+          panel.webview.html = outputPanelProvider.getContentHtml(
+            "AI File Edit",
+            `Improved code:
+
+\`\`\`${language}
+${improvedCode}
+\`\`\``,
+            false
+          );
+        }
+        vscode6.window.showInformationMessage(
+          "\u2705 AI improved your file! Apply changes?",
+          "Yes, Apply",
+          "No"
+        ).then(async (choice) => {
+          if (choice === "Yes, Apply") {
+            await FileService.replaceFileContent(improvedCode);
+            panel.webview.html = outputPanelProvider.getContentHtml(
+              "\u2705 File Updated!",
+              "Your file has been improved and saved!",
+              true
+            );
+          }
+        });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        panel.webview.html = outputPanelProvider.getErrorHtml(errorMsg);
+      }
+    })
+  );
+  context.subscriptions.push(
+    vscode6.commands.registerCommand("ollama-assistant.explainProject", async () => {
+      const panel = outputPanelProvider.createPanel("Project Analysis");
+      panel.webview.html = outputPanelProvider.getLoadingHtml();
+      try {
+        const workspaceFiles = await FileService.getWorkspaceFiles();
+        const config = vscode6.workspace.getConfiguration("ollamaAssistant");
+        const model = config.get("model", "llama3");
+        const prompt = `Analyze this project structure and files. Provide:
+1. Project purpose
+2. Main technologies used
+3. Architecture overview
+4. Potential improvements
+
+Project files:
+${workspaceFiles.slice(0, 3).join("\n")}...`;
+        let analysis = "";
+        for await (const chunk of ollamaService.streamGenerate(model, prompt)) {
+          analysis += chunk;
+          panel.webview.html = outputPanelProvider.getContentHtml(
+            "Project Analysis",
+            analysis,
+            false
+          );
+        }
+        panel.webview.html = outputPanelProvider.getContentHtml(
+          "Project Analysis Complete",
+          analysis,
+          true
+        );
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        panel.webview.html = outputPanelProvider.getErrorHtml(errorMsg);
+      }
+    })
+  );
+  context.subscriptions.push(
+    vscode6.commands.registerCommand("ollama-assistant.testFiles", async () => {
+      const files = await FileService.getWorkspaceFiles();
+      const currentFile = await FileService.getCurrentFile();
+      vscode6.window.showInformationMessage(
+        `\u{1F4C1} Found ${files.length} workspace files! 
+        \u{1F4C4} Current file: ${currentFile ? "\u2705 YES" : "\u274C NO"}`
+      );
     })
   );
   ollamaService.checkConnection().then((isConnected) => {
     if (!isConnected) {
-      vscode5.window.showWarningMessage(
-        "Ollama is not running. Please start Ollama to use this extension.",
-        "Open Ollama Site"
+      vscode6.window.showWarningMessage(
+        "\u26A0\uFE0F Ollama not running. Start with: ollama serve",
+        "Open Ollama"
       ).then((selection) => {
-        if (selection === "Open Ollama Site") {
-          vscode5.env.openExternal(vscode5.Uri.parse("https://ollama.ai"));
+        if (selection === "Open Ollama") {
+          vscode6.env.openExternal(vscode6.Uri.parse("https://ollama.ai"));
         }
       });
     }

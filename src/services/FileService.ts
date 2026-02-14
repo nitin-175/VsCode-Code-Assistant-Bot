@@ -1,24 +1,36 @@
 import * as vscode from 'vscode';
 
 export class FileService {
-  // Read entire workspace files
+  // Get workspace files
   static async getWorkspaceFiles(): Promise<string[]> {
-    const files: string[] = [];
-    const uris = await vscode.workspace.findFiles('**/*.{js,ts,py,jsx,tsx}', '**/node_modules/**');
-    
-    for (const uri of uris) {
-      const content = await vscode.workspace.fs.readFile(uri);
-      const text = new TextDecoder().decode(content);
-      files.push(`File: ${uri.fsPath}\n${text}\n\n---`);
+    try {
+      const files: string[] = [];
+      const uris = await vscode.workspace.findFiles(
+        '**/*.{js,ts,jsx,tsx,py,html,css}', 
+        '**/node_modules/**,**/dist/**,.git/**'
+      );
+      
+      for (const uri of uris.slice(0, 10)) {
+        try {
+          const content = await vscode.workspace.fs.readFile(uri);
+          const text = new TextDecoder().decode(content);
+          // Use uri.path instead of path.basename
+          const fileName = uri.path.split('/').pop() || 'unknown';
+          files.push(`--- File: ${fileName} ---\n${text.slice(0, 2000)}`);
+        } catch (e) {
+          // Skip unreadable files
+        }
+      }
+      return files;
+    } catch (error) {
+      return [];
     }
-    return files;
   }
 
-  // Read current file
+  // Get current file content
   static async getCurrentFile(): Promise<string | null> {
     const editor = vscode.window.activeTextEditor;
-    if (!editor) return null;
-    return editor.document.getText();
+    return editor?.document.getText() || null;
   }
 
   // Replace file content
@@ -27,15 +39,16 @@ export class FileService {
     if (!editor) return;
 
     const fullRange = new vscode.Range(
-      editor.document.positionAt(0),
-      editor.document.lineAt(editor.document.lineCount - 1).range.end
+      0, 0,
+      editor.document.lineCount,
+      editor.document.lineAt(editor.document.lineCount - 1).text.length
     );
     
-    await editor.edit(editBuilder => {
-      editBuilder.replace(fullRange, content);
+    await editor.edit(edit => {
+      edit.replace(fullRange, content);
     });
 
-    vscode.window.showInformationMessage('✅ File updated by Ollama!');
+    await editor.document.save();
+    vscode.window.showInformationMessage('✅ File saved by Ollama!');
   }
 }
-  
