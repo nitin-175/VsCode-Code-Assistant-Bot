@@ -32,7 +32,7 @@ export class FileService {
     const editor = vscode.window.activeTextEditor;
     return editor?.document.getText() || null;
   }
-
+   
   // Replace file content
   static async replaceFileContent(content: string): Promise<void> {
     const editor = vscode.window.activeTextEditor;
